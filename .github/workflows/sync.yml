@@ -1,0 +1,65 @@
+name: Sync Fork
+
+permissions:
+  contents: write
+
+on:
+  # 调度任务：每天 UTC 16:00 自动运行一次
+  schedule:
+    - cron: '0 16 * * *' 
+  
+  # 允许手动点击触发
+  workflow_dispatch:
+
+jobs:
+  sync_with_upstream:
+    name: Sync with Upstream
+    runs-on: ubuntu-latest
+    # 确保只在 Fork 仓库中运行时才执行
+    if: ${{ github.event.repository.fork }}
+
+    steps:
+      - name: Checkout target repo
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: main
+          # 必须设置为 0，获取完整历史记录，为 merge 操作做准备
+          fetch-depth: 0 
+
+      - name: Sync Upstream via Git
+        # 集中定义可修改的配置变量
+        env:
+          # 【上游仓库】只需填写 用户名/仓库名
+          UPSTREAM_SLUG: ChenyangGao/p115client
+          
+          # 【上游分支】需要同步的上游分支名
+          UPSTREAM_BRANCH: main
+          
+          # 【目标分支】你本仓库要同步的目标分支名
+          TARGET_BRANCH: main 
+        
+        run: |
+          # 1. 配置 Git 身份，用于 commit (合并)
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+
+          # 2. 构造完整的 HTTPS URL，避免插件 Bug
+          FULL_UPSTREAM_URL="https://github.com/${UPSTREAM_SLUG}.git"
+
+          # 3. 添加上游仓库远程地址
+          git remote add upstream $FULL_UPSTREAM_URL
+
+          # 4. 拉取上游更新
+          git fetch upstream
+
+          # 5. 切换到目标分支并合并
+          git checkout $TARGET_BRANCH
+          git merge upstream/$UPSTREAM_BRANCH --no-edit 
+
+          # 6. 推送回你的远程仓库
+          git push origin $TARGET_BRANCH
+          
+      - name: Check for Success
+        if: success()
+        run: echo "Fork Sync completed successfully."
