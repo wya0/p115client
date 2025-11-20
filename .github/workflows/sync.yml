@@ -23,7 +23,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          ref: main
+          ref: ${{ github.ref_name }}
           # 必须设置为 0，获取完整历史记录，为 merge 操作做准备
           fetch-depth: 0 
 
@@ -37,7 +37,7 @@ jobs:
           UPSTREAM_BRANCH: main
           
           # 【目标分支】你本仓库要同步的目标分支名
-          TARGET_BRANCH: main 
+          TARGET_BRANCH: ${{ github.ref_name }}
         
         run: |
           # 1. 配置 Git 身份，用于 commit (合并)
