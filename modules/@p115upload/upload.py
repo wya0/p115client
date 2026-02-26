@@ -13,10 +13,6 @@ if __name__ == "__main__":
 
     path[0] = str(Path(__file__).parents[2])
     parser = ArgumentParser(description=__doc__, formatter_class=RawTextHelpFormatter)
-else:
-    from .init import subparsers
-
-    parser = subparsers.add_parser("upload", description=__doc__, formatter_class=RawTextHelpFormatter)
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -43,32 +39,11 @@ class Result(NamedTuple):
     tasks: Tasks
 
 
-def get_status_code(e: BaseException, /) -> int:
-    status = getattr(e, "status", None) or getattr(e, "code", None) or getattr(e, "status_code", None)
-    if status is None and hasattr(e, "response"):
-        response = e.response
-        status = (
-            getattr(response, "status", None) or 
-            getattr(response, "code", None) or 
-            getattr(response, "status_code", None)
-        )
-    return status or 0
-
-
-def parse_args(argv: None | list[str] = None, /) -> Namespace:
-    args = parser.parse_args(argv)
-    if args.version:
-        from p115 import __version__
-        print(".".join(map(str, __version__)))
-        raise SystemExit(0)
-    return args
-
-
 def main(argv: None | list[str] | Namespace = None, /):
     if isinstance(argv, Namespace):
         args = argv
     else:
-        args = parse_args(argv)
+        args = parser.parse_args(argv)
 
     import errno
 
@@ -86,9 +61,9 @@ def main(argv: None | list[str] | Namespace = None, /):
 
     from concurrenttools import thread_batch
     from hashtools import file_digest
-    from p115 import check_response, MultipartUploadAbort, MultipartResumeData
-    from p115.component import P115Client
-    from posixpatht import escape, joinpath as pjoinpath, normpath as pnormpath, split as psplit, path_is_dir_form
+    from http_response import get_status_code
+    from p115client import P115Client, check_response
+    from posixpatht import normpath as pnormpath, split as psplit, path_is_dir_form
     from rich.progress import (
         Progress, DownloadColumn, FileSizeColumn, MofNCompleteColumn, SpinnerColumn, 
         TimeElapsedColumn, TransferSpeedColumn, 
@@ -628,3 +603,74 @@ if __name__ == "__main__":
 # TODO: 如果文件大于特定大小，就不能秒传，需要直接报错（而不需要进行尝试）
 # TODO: 支持把一个目录上传到另一个目录（如果扩展名没改，就直接复制，然后改名，否则就秒传）
 # TODO: 支持直接从一个115网盘直接上传到另一个115网盘
+
+
+# TODO: 实现一个 115 网盘的上传器、转存器和下载器
+1. 通过名字和大小来唯一确定文件
+2. 对于非法符号的某种特别处理（可能导致两个文件夹合并）
+3. 对于文件的上传有分步的处理机制
+4. 什么时候该重试、跳过或停止
+5. 有某个临时的任务文件，可以保留上传尚未处理的文件
+6. 可以通过某种机制跳过一些文件
+7. 支持多线程或异步，使用尽量少的内存
+8. 允许从迭代器中获取文件列表
+
+
+# TODO: 是否要保留 drive 记号
+from iterdir import iterdir
+from os import sep
+from posixpath import relpath
+
+if sep == "/":
+    normpath = lambda path, /: path
+else:
+    from os import path as ospath
+    def normpath(path: str, /) -> str:
+        if ospath.isabs(path):
+            _, path = ospath.splitdrive(path)
+        return path.replace(sep, "/")
+
+
+
+for entry in iterdir("Multimedia"):
+    "判断是否要保留"
+    if entry.is_dir():
+        "创建目录"
+    else:
+        "创建文件"
+
+
+本地路径
+远程路径
+
+
+
+get_path(client, 3327397098554392215, ensure_file=False)
+
+try:
+    get_id_to_path(client, '/Multimedia')
+except FileNotFoundError:
+
+
+
+stat = entry.stat()
+stat.st_mtime
+stat.st_size
+entry.name # 文件名
+entry.path # 减掉 common_path，得到相对路径
+
+
+
+对于要上传的文件
+1. 确定远程有没有这个文件（通过更新时间对比）
+2. 如果远程的文件更旧，那就把远程文件删除，上传此文件
+3. 计算 sha1 和 size
+4. 尝试秒传
+5. 秒传失败，则进行分块上传
+6. 上传成功
+
+确定要上传的目标目录（目录 id 或路径）
+
+
+
+

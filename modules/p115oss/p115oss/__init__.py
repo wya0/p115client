@@ -1024,7 +1024,7 @@ def oss_multipart_upload_part(
             nonlocal count_in_bytes
             count_in_bytes += buffer_length(chunk)
         file = wrap_iter(file, callnext=acc)
-    def parse_upload_part(resp, /) -> dict:
+    def parse_upload_part(resp, _, /) -> dict:
         headers = resp.headers
         return {
             "PartNumber": part_number, 

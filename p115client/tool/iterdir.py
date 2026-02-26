@@ -245,7 +245,7 @@ def update_resp_ancestors(
     need_update_id_to_dirnode = id_to_dirnode not in (..., None)
     if "path" in resp:
         resp["ancestors"] = ancestors
-        start_idx = not resp["path"][0]["cid"]
+        start_idx = 1 - int(resp["path"][0]["cid"])
         if start_idx:
             add_ancestor({"id": 0, "parent_id": 0, "name": ""})
         for info in resp["path"][start_idx:]:

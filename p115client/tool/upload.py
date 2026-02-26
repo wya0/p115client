@@ -6,6 +6,7 @@ from __future__ import annotations
 __author__ = "ChenyangGao <https://chenyanggao.github.io>"
 __all__ = [
     "upload_host_image", "iter_115_to_115", "iter_115_to_115_resume", 
+    "sha1_for_check_existence", "upload_for_check_existence", 
     "upload_init", "P115MultipartUpload", 
 ]
 __doc__ = "这个模块提供了一些和上传有关的函数"
@@ -36,6 +37,8 @@ from p115pickcode import to_id
 from yarl import URL
 
 from ..client import check_response, P115Client, P115OpenClient
+from ..type import P115URL
+from ..tool import load_final_image
 from .attr import normalize_attr_simple
 from .download import iter_download_files
 from .iterdir import iterdir, iter_files_with_path, unescape_115_charref
@@ -50,7 +53,7 @@ def upload_host_image(
     *, 
     async_: Literal[False] = False, 
     **request_kwargs, 
-) -> str:
+) -> P115URL:
     ...
 @overload
 def upload_host_image(
@@ -61,7 +64,7 @@ def upload_host_image(
     *, 
     async_: Literal[True], 
     **request_kwargs, 
-) -> Coroutine[str, Any, Any]:
+) -> Coroutine[P115URL, Any, Any]:
     ...
 def upload_host_image(
     client: str | PathLike | P115Client, 
@@ -71,7 +74,7 @@ def upload_host_image(
     *, 
     async_: Literal[False, True] = False, 
     **request_kwargs, 
-) -> str | Coroutine[str, Any, Any]:
+) -> P115URL | Coroutine[P115URL, Any, Any]:
     """上传图片，然后可作为图床使用
 
     .. caution::
@@ -101,6 +104,11 @@ def upload_host_image(
                 **request_kwargs, 
             )
             check_response(resp)
+            data = {
+                "oss": resp["data"]["sha1"], 
+                "sha1": resp["data"]["file_sha1"], 
+                "size": int(resp["data"]["file_size"]), 
+            }
             if base_url:
                 resp = yield client.life_get_pic_url(
                     resp["data"]["sha1"], 
@@ -108,9 +116,9 @@ def upload_host_image(
                     **request_kwargs, 
                 )
                 check_response(resp)
-                return resp["data"][0]["json"].replace("&i=0", "&i=1")
+                return P115URL(resp["data"][0]["json"].replace("&i=0", "&i=1"), data)
             url = resp["data"]["thumb_url"]
-            return url[:url.index("?")]
+            return P115URL(url[:url.index("?")], data)
         resp = yield client.upload_file_sample(
             file, # type: ignore
             filename="x.jpg", 
@@ -121,7 +129,10 @@ def upload_host_image(
         check_response(resp)
         data = resp["data"]
         url = base_url + "?&"["?" in base_url]
-        return url + f"user_id={client.user_id}&id={data["file_id"]}&pickcode={data["pick_code"]}&sha1={data["sha1"]}&size={data["file_size"]}"
+        return P115URL(
+            url + f"user_id={client.user_id}&id={data["file_id"]}&pickcode={data["pick_code"]}&sha1={data["sha1"]}&size={data["file_size"]}", 
+            resp["data"], 
+        )
     return run_gen_step(gen_step, async_)
 
 
@@ -548,6 +559,108 @@ def iter_115_to_115_resume(
                 max_workers=max_workers, 
             ))
     return run_gen_step_iter(gen_step, async_)
+
+
+@overload
+def sha1_for_check_existence(
+    client: str | PathLike | P115Client, 
+    sha1: str, 
+    *, 
+    async_: Literal[False] = False, 
+    **request_kwargs, 
+) -> bool:
+    ...
+@overload
+def sha1_for_check_existence(
+    client: str | PathLike | P115Client, 
+    sha1: str, 
+    *, 
+    async_: Literal[True], 
+    **request_kwargs, 
+) -> Coroutine[Any, Any, bool]:
+    ...
+def sha1_for_check_existence(
+    client: str | PathLike | P115Client, 
+    sha1: str, 
+    *, 
+    async_: Literal[False, True] = False, 
+    **request_kwargs, 
+) -> bool | Coroutine[Any, Any, bool]:
+    """判断某个文件（用 `sha1` 唯一确定）是否存在于 115 网盘上（但不一定在你自己的网盘中）
+
+    :param client: 115 客户端或 cookies
+    :param sha1: 文件的 sha1 哈希值
+    :param async_: 是否异步
+    :param request_kwargs: 其它请求参数
+
+    :return: 是否存在文件
+    """
+    if isinstance(client, (str, PathLike)):
+        client = P115Client(client, check_for_relogin=True)
+    def gen_step():
+        resp = yield client.note_get_pic_url(sha1, async_=async_, **request_kwargs)
+        check_response(resp)
+        ret = yield load_final_image(resp["data"][0], async_=async_)
+        return ret != 404
+    return run_gen_step(gen_step, async_)
+
+
+@overload
+def upload_for_check_existence(
+    client: str | PathLike | P115Client | P115OpenClient, 
+    sha1: str, 
+    size: int, 
+    *, 
+    async_: Literal[False] = False, 
+    **request_kwargs, 
+) -> bool:
+    ...
+@overload
+def upload_for_check_existence(
+    client: str | PathLike | P115Client | P115OpenClient, 
+    sha1: str, 
+    size: int, 
+    *, 
+    async_: Literal[True], 
+    **request_kwargs, 
+) -> Coroutine[Any, Any, bool]:
+    ...
+def upload_for_check_existence(
+    client: str | PathLike | P115Client | P115OpenClient, 
+    sha1: str, 
+    size: int, 
+    *, 
+    async_: Literal[False, True] = False, 
+    **request_kwargs, 
+) -> bool | Coroutine[Any, Any, bool]:
+    """通过秒传接口，判断某个文件（用 `sha1` 和 `size` 唯一确定）是否存在于 115 网盘上（但不一定在你自己的网盘中）
+
+    :param client: 115 客户端或 cookies
+    :param sha1: 文件的 sha1 哈希值
+    :param size: 文件大小
+    :param async_: 是否异步
+    :param request_kwargs: 其它请求参数
+
+    :return: 是否存在文件
+    """
+    if isinstance(client, (str, PathLike)):
+        client = P115Client(client, check_for_relogin=True)
+    def gen_step():
+        if isinstance(client, P115Client):
+            resp = yield client.upload_init(
+                {"fileid": sha1.upper(), "filesize": size, "filename": "?"}, 
+                async_=async_, 
+                **request_kwargs, 
+            )
+        else:
+            resp = yield client.upload_init_open(
+                {"fileid": sha1.upper(), "file_size": size, "file_name": "?", "target": "U_1_0"}, 
+                async_=async_, 
+                **request_kwargs, 
+            )
+            resp = resp["data"]
+        return resp["status"] in (2, 7)
+    return run_gen_step(gen_step, async_)
 
 
 @overload

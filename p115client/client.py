@@ -578,7 +578,7 @@ class ClientRequestMixin:
             "accept": "*/*", 
             "accept-encoding": "gzip, deflate, br, zstd", 
             "connection": "keep-alive", 
-            "user-agent": "Mozilla/5.0 115disk/99.99.99.99 115Browser/99.99.99.99 115wangpan_android/99.99.99.99", 
+            "user-agent": "Mozilla/5.0", 
         })
 
     @locked_cacheproperty
@@ -20592,7 +20592,10 @@ class P115Client(P115OpenClient):
         if ac:
             payload["ac"] = ac
         payload["app_ver"] = "99.99.99.99"
-        request_kwargs["headers"] = dict(request_kwargs.get("headers") or {})
+        request_kwargs["headers"] = {
+            **(request_kwargs.get("headers") or {}), 
+            "user-agent": "Mozilla/5.0 115disk/99.99.99.99 115Browser/99.99.99.99 115wangpan_android/99.99.99.99", 
+        }
         request_kwargs["ecdh_encrypt"] = False
         def parse(_, content: bytes, /) -> dict:
             json = json_loads(content)
@@ -24994,8 +24997,13 @@ class P115Client(P115OpenClient):
             payload["userid"] = self.user_id
         if "userkey" not in payload:
             payload["userkey"] = self.user_key
-        headers = request_kwargs["headers"] = dict(request_kwargs.get("headers") or ())
-        headers["content-type"] = "application/x-www-form-urlencoded"
+        request_kwargs["headers"] = dict_update(
+            dict(request_kwargs.get("headers") or ()), 
+            {
+                "content-type": "application/x-www-form-urlencoded", 
+                "user-agent": "Mozilla/5.0 115disk/99.99.99.99 115Browser/99.99.99.99 115wangpan_android/99.99.99.99", 
+            }, 
+        )
         request_kwargs.update(make_upload_payload(payload))
         def parse_upload_init_response(_, content: bytes, /) -> dict:
             data = ecdh_aes_decrypt(content, decompress=True)
@@ -25898,7 +25906,6 @@ class P115Client(P115OpenClient):
             )
         return run_gen_step(gen_step, async_)
 
-    # TODO: 上传返回的信息，尽量保留所有必要的信息，例如 oss 相关的信息和某些中间的上传参数
     @overload
     def upload_file(
         self, 
