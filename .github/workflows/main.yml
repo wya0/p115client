@@ -1,0 +1,70 @@
+name: Sync Fork
+
+permissions:
+  contents: write
+
+on:
+  schedule:
+    - cron: '0 16 * * *' 
+  workflow_dispatch:
+
+jobs:
+  sync_with_upstream:
+    name: Sync with Upstream
+    runs-on: ubuntu-latest
+    if: ${{ github.event.repository.fork }}
+
+    steps:
+      - name: Checkout target repo
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0 
+
+      - name: Sync Upstream via Git
+        env:
+          UPSTREAM_SLUG: ChenyangGao/p115client
+          UPSTREAM_BRANCH: main
+          TARGET_BRANCH: ${{ github.ref_name }}
+        
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+
+          FULL_UPSTREAM_URL="https://github.com/${UPSTREAM_SLUG}.git"
+          git remote add upstream $FULL_UPSTREAM_URL
+          git fetch upstream
+
+          git checkout $TARGET_BRANCH
+
+          # 合并但不提交
+          git merge upstream/$UPSTREAM_BRANCH --no-edit --no-commit || true
+
+          # =====================================================
+          # 【暴力清理步骤】
+          # =====================================================
+          echo "Aggressively cleaning workflows directory..."
+          
+          # 1. 先从暂存区和工作区彻底移除 .github/workflows 目录
+          # 这一步会删除上游带来的所有新文件 (比如 publish_tv_app_dev.yaml)
+          git rm -rf .github/workflows/ || true
+
+          # 2. 再从当前的 HEAD (你原本的代码) 恢复该目录
+          # 这一步会把你原本的 workflow 文件原封不动地拿回来
+          git checkout HEAD -- .github/workflows/ || true
+
+          # =====================================================
+          # 【提交并推送】
+          # =====================================================
+          if git diff --staged --quiet; then
+            echo "No changes to commit."
+          else
+            echo "Committing clean changes..."
+            git commit -m "Sync upstream (removed upstream workflows)"
+            git push origin $TARGET_BRANCH
+          fi
+
+      - name: Check for Success
+        if: success()
+        run: echo "Fork Sync completed successfully."
